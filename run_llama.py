@@ -72,7 +72,8 @@ def create_data(filename, tokenizer: Tokenizer, flag: str ='train', lower: bool 
 	num_labels = {}
 	data = []
 
-	with open(filename, 'r') as fp:
+	# Explicitly use UTF-8 to avoid Windows default (e.g., gbk) decoding issues
+	with open(filename, 'r', encoding="utf-8") as fp:
 		for line in fp:
 			label, org_sent = line.split(' ||| ')
 			if lower:
@@ -216,13 +217,14 @@ def generate_sentence(args, prefix, outfile, max_new_tokens = 75, temperature = 
 				print(f"Temperature is {temperature}")
 				print(sentence)
 				print('---------------')
-				writer = open(outfile, 'w')
-				writer.write(sentence)
+				# Write output as UTF-8 to support non-ASCII characters
+				with open(outfile, 'w', encoding="utf-8") as writer:
+					writer.write(sentence)
 				print(f"Wrote generated sentence to {outfile}.")
-				writer.close()
 
 def write_predictions_to_file(split: str, outfile: str, acc: float, pred: list[str], sents: list[str]):
-	with open(outfile, "w+") as f:
+	# Ensure predictions are written with UTF-8 encoding
+	with open(outfile, "w+", encoding="utf-8") as f:
 		print(f"{split} acc :: {acc :.3f}")
 		for s, p in zip(sents, pred):
 			f.write(f"{p} ||| {s}\n")
@@ -237,7 +239,9 @@ def test_with_prompting(args):
 		#### Load data
 		# create the data and its corresponding datasets and dataloader
 		tokenizer = Tokenizer(args.max_sentence_len)
-		label_names = json.load(open(args.label_names, 'r'))
+		# Read label names JSON using UTF-8 encoding
+		with open(args.label_names, 'r', encoding="utf-8") as f:
+			label_names = json.load(f)
 		_, num_labels = create_data(args.train, tokenizer, 'train')
 
 		#### Init model
@@ -276,7 +280,12 @@ def test(args):
 	assert args.test_out.endswith("test-finetuning-output.txt"), 'For saving finetuning results, please set the test_out argument as "<dataset>-test-finetuning-output.txt"'
 	with torch.no_grad():
 		device = torch.device('cuda') if args.use_gpu else torch.device('cpu')
-		saved = torch.load(args.filepath)
+		# saved = torch.load(args.filepath)
+		# 显式关闭 weights_only，并允许 argparse.Namespace 被反序列化
+		import argparse as _argparse
+		import torch.serialization as _ts
+		_ts.add_safe_globals([_argparse.Namespace])
+		saved = torch.load(args.filepath, weights_only=False)
 		config = saved['model_config']
 		model = LlamaEmbeddingClassifier(config)
 		model.load_state_dict(saved['model'])
